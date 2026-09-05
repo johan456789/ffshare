@@ -116,6 +116,8 @@ class Utils(private val context: Context) {
                 "png" to MediaType.PNG,
                 "gif" to MediaType.GIF,
                 "webp" to MediaType.WEBP,
+                "heic" to MediaType.HEIC,
+                "heif" to MediaType.HEIF,
                 // videos
                 "mp4" to MediaType.MP4,
                 "mkv" to MediaType.MKV,
@@ -149,8 +151,25 @@ class Utils(private val context: Context) {
                 mediaType = MediaType.GIF
             } else if (signature.startsWith("52494646") && signature.drop(16).startsWith("57454250")) { // 52 49 46 46 ?? ?? ?? ?? 57 45 42 50
                 mediaType = MediaType.WEBP
-            } else if (signature.drop(8).startsWith("6674797069736F6D")) { // ** ** ** ** 66 74 79 70 69 73 6F 6D
-                mediaType = MediaType.MP4
+            } else if (signature.drop(8).startsWith("66747970")) { // ftyp box: ** ** ** ** 66 74 79 70 ?? ?? ?? ?? (e.g. mp4, mov, heic)
+                // major brand is bytes 8-11 (hex chars 16-24)
+                val majorBrand = signature.drop(16).take(8)
+                if (majorBrand in setOf(
+                        "68656963", // heic
+                        "68656978", // heix
+                        "68657663", // hevc
+                        "68657678", // hevx
+                        "6865696D", // heim
+                        "68656973", // heis
+                        "6865766D", // hevm
+                        "68657673", // hevs
+                        "6D696631", // mif1 (generic HEIF, usually HEIC)
+                        "6D736631"  // msf1 (HEIF sequence)
+                    )) {
+                    mediaType = MediaType.HEIC
+                } else if (signature.drop(8).startsWith("6674797069736F6D")) { // ** ** ** ** 66 74 79 70 69 73 6F 6D
+                    mediaType = MediaType.MP4
+                }
             } else if (signature.startsWith("1A45DFA3")) { // or webm, but assume mkv, also not that big a deal as only happens when filename is not found
                 mediaType = MediaType.MKV
             } else if (signature.startsWith("52494646") && signature.drop(16).startsWith("41564920")) { // 52 49 46 46 ** ** ** ** 41 56 49 20
@@ -177,8 +196,19 @@ class Utils(private val context: Context) {
     fun getMediaResolution(mediaUri: Uri, mediaType: MediaType): Pair<Int,Int> {
         // image
         if (isImage(mediaType)) {
-            val bitmapOption = BitmapFactory.decodeStream(context.contentResolver.openInputStream(mediaUri)!!)
-            return Pair(bitmapOption.width, bitmapOption.height)
+            try {
+                context.contentResolver.openInputStream(mediaUri)?.use { stream ->
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    if (bitmap != null) {
+                        return Pair(bitmap.width, bitmap.height)
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.d("BitmapFactory unable to decode image: %s", e.message)
+            }
+            // BitmapFactory returned null (e.g. HEIC on devices without HEIF support),
+            // fall through to MediaMetadataRetriever below
+            Timber.d("BitmapFactory unable to decode image, trying MediaMetadataRetriever")
         }
         // video
         // attempt to get video resolution
@@ -189,10 +219,14 @@ class Utils(private val context: Context) {
             return Pair(0,0) // unable to read video width/height, usually happens with avi files
         }
         // read video resolution
-        val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!.toInt()
-        val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!.toInt()
-        retriever.release()
-        return Pair(width,height)
+        try {
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 0
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 0
+            retriever.release()
+            return Pair(width, height)
+        } catch (e: Exception) {
+            return Pair(0, 0) // unable to read width/height
+        }
     }
 
     fun bytesToHuman(bytes: Long): String {
@@ -221,7 +255,7 @@ class Utils(private val context: Context) {
 
     enum class MediaType {
         MP4, MKV, WEBM, AVI, // videos
-        JPEG, JPG, PNG, GIF, WEBP, // images
+        JPEG, JPG, PNG, GIF, WEBP, HEIC, HEIF, // images
         MP3, OGG, AAC, WAV, OPUS, // audios
         UNKNOWN
     }
@@ -231,7 +265,7 @@ class Utils(private val context: Context) {
     }
     fun isImage(type: MediaType): Boolean {
         return type == MediaType.JPEG || type == MediaType.PNG || type == MediaType.GIF
-                || type == MediaType.WEBP
+                || type == MediaType.WEBP || type == MediaType.HEIC || type == MediaType.HEIF
     }
     fun isVideo(type: MediaType): Boolean {
         return type == MediaType.MP4 || type == MediaType.MKV || type == MediaType.WEBM
