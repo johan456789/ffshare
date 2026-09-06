@@ -56,6 +56,11 @@ class Utils(private val context: Context) {
         if (outputMediaType == MediaType.UNKNOWN) {
             outputMediaType = inputFileMediaType;
         }
+        // ffmpeg has no HEIF muxer, so HEIC/HEIF can only ever be inputs:
+        // "original" output for them falls back to JPEG instead of failing
+        if (outputMediaType == MediaType.HEIC || outputMediaType == MediaType.HEIF) {
+            outputMediaType = MediaType.JPEG;
+        }
         return outputMediaType
     }
     private fun makeCacheUUIDFolder(): File {
