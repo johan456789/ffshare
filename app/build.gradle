@@ -15,13 +15,27 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+    // Release signing: CI writes key.properties (see sign-android action),
+    // local builds use FFSHARE_RELEASE_* from ~/.gradle/gradle.properties.
+    // When neither is present the release build stays unsigned (plain CI).
+    def keystoreProps = new Properties()
+    def keystorePropsFile = rootProject.file("key.properties")
+    if (keystorePropsFile.exists()) {
+        keystoreProps.load(new FileInputStream(keystorePropsFile))
+    }
+    def releaseStoreFile = keystoreProps.getProperty("storeFile") ?: findProperty("FFSHARE_RELEASE_STORE_FILE")
+    def releaseStorePassword = keystoreProps.getProperty("storePassword") ?: findProperty("FFSHARE_RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = keystoreProps.getProperty("keyAlias") ?: findProperty("FFSHARE_RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = keystoreProps.getProperty("keyPassword") ?: findProperty("FFSHARE_RELEASE_KEY_PASSWORD")
+    def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
     signingConfigs {
-        release {
-            // environment variables from ~/.gradle/gradle.properties
-            storeFile file(FFSHARE_RELEASE_STORE_FILE)
-            storePassword FFSHARE_RELEASE_STORE_PASSWORD
-            keyAlias FFSHARE_RELEASE_KEY_ALIAS
-            keyPassword FFSHARE_RELEASE_KEY_PASSWORD
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
     
@@ -50,7 +64,9 @@ android {
             }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             ndk {

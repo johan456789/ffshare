@@ -11,6 +11,10 @@
 .cxx
 local.properties
 
+# release signing (generated from repo secrets by CI, never commit)
+/key.properties
+/release-keystore.jks
+
 *.apk
 /repo
 /stats

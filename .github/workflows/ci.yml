@@ -1,0 +1,35 @@
+name: CI
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+# release job attaches APKs on v* tags
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    uses: johan456789/ci-templates/.github/workflows/android-gradle-app.yml@main
+    with:
+      gradle_task: assembleRelease
+      # app/libs (ffmpeg-kit .aar) is gitignored: rebuild it via the repo's
+      # own script on cache miss, then reuse the cached .aar.
+      # build_ffmpegkit.sh shells out to `nix develop`, so bootstrap Nix
+      # first (absent on GitHub runners).
+      prebuild_script: |
+        mkdir -p app/libs
+        if ! command -v nix >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install --no-confirm
+        fi
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        ./build_ffmpegkit.sh
+      prebuild_cache_path: app/libs
+      prebuild_cache_key: ffmpeg-aar
+      prebuild_cache_hash_files: build_ffmpegkit.sh
+    secrets: inherit
