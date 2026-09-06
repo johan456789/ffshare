@@ -3,7 +3,6 @@ on:
   push:
     branches: [master]
     tags: ['v*']
-  pull_request:
 
 # release job attaches APKs on v* tags
 permissions:
