@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   android:
-    uses: johan456789/ci-templates/.github/workflows/android-gradle-app.yml@main
+    uses: johan456789/ci-templates/.github/workflows/app-android.yml@main
     with:
       gradle_task: assembleRelease
       # app/libs (ffmpeg-kit .aar) is gitignored: rebuild it via the repo's
@@ -31,4 +31,10 @@ jobs:
       prebuild_cache_path: app/libs
       prebuild_cache_key: ffmpeg-aar
       prebuild_cache_hash_files: build_ffmpegkit.sh
-    secrets: inherit
+    # signing secrets live in the repo's `release` environment; the template's
+    # release job declares that environment, so these names resolve from it
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
