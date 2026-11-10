@@ -149,9 +149,9 @@ class MediaCompressor(private val context: Context) {
                 }
             } else { // success
                 Timber.d("ffmpeg command executed successfully")
-                if (settings.copyExifTags && ExifTools.isValidType(mediaType)) {
+                if (settings.copyExifTags && ExifTools.canReadExif(mediaType) && ExifTools.canWriteExif(outputMediaType)) {
                     Timber.d("copying exif tags")
-                    ExifTools.copyExif(context.contentResolver.openInputStream(inputFileUri)!!, outputFile)
+                    ExifTools.copyExif(context.contentResolver, inputFileUri, outputFile)
                 }
                 val outputFileCurrentSize = outputFile.length()
                 // """Only the original thread that created a view hierarchy can touch its views."""

@@ -1,33 +1,44 @@
 package com.caydey.ffshare.utils
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import timber.log.Timber
 import java.io.File
-import java.io.InputStream
 
 class ExifTools {
     companion object {
-        fun copyExif(inputFileStream: InputStream, outputFile: File) {
-            val inputExifInterface = ExifInterface(inputFileStream)
-            val outputExifInterface = ExifInterface(outputFile)
-            for (exifTag in exifTags) {
-                val value = inputExifInterface.getAttribute(exifTag)
-                if (value != null) {
-                    Timber.d("Copying tag: '%s'", exifTag)
-                    outputExifInterface.setAttribute(exifTag, value)
+        fun copyExif(contentResolver: ContentResolver, inputFileUri: Uri, outputFile: File) {
+            try {
+                // read from a file descriptor rather than a raw stream, HEIF/HEIC exif
+                // parsing requires seekable input
+                contentResolver.openFileDescriptor(inputFileUri, "r")!!.use { pfd ->
+                    val inputExifInterface = ExifInterface(pfd.fileDescriptor)
+                    val outputExifInterface = ExifInterface(outputFile)
+                    for (exifTag in exifTags) {
+                        val value = inputExifInterface.getAttribute(exifTag)
+                        if (value != null) {
+                            Timber.d("Copying tag: '%s'", exifTag)
+                            outputExifInterface.setAttribute(exifTag, value)
+                        }
+                    }
+                    outputExifInterface.saveAttributes()
                 }
+            } catch (e: Exception) {
+                // exif copy failure must never turn a successful compression into a crash
+                Timber.w(e, "EXIF copy failed")
             }
-            outputExifInterface.saveAttributes()
         }
-        fun isValidType(mediaType: Utils.MediaType): Boolean {
-            return (
-                mediaType == Utils.MediaType.JPEG ||
-                mediaType == Utils.MediaType.PNG
-            )
-        }
+        // ExifInterface reads JPEG/PNG/WebP plus HEIF (API 28+, may return no tags on 26-27)
+        fun canReadExif(type: Utils.MediaType) = type in setOf(
+            Utils.MediaType.JPEG, Utils.MediaType.JPG, Utils.MediaType.PNG,
+            Utils.MediaType.WEBP, Utils.MediaType.HEIC, Utils.MediaType.HEIF
+        )
+        // ExifInterface writes only JPEG/PNG/WebP
+        fun canWriteExif(type: Utils.MediaType) = type in setOf(
+            Utils.MediaType.JPEG, Utils.MediaType.JPG, Utils.MediaType.PNG, Utils.MediaType.WEBP
+        )
         private val exifTags = arrayOf(
-            ExifInterface.TAG_IMAGE_WIDTH,
-            ExifInterface.TAG_IMAGE_LENGTH,
             ExifInterface.TAG_BITS_PER_SAMPLE,
             ExifInterface.TAG_COMPRESSION,
             ExifInterface.TAG_PHOTOMETRIC_INTERPRETATION,
@@ -58,8 +69,6 @@ class ExifTools {
             ExifInterface.TAG_FLASHPIX_VERSION,
             ExifInterface.TAG_COLOR_SPACE,
             ExifInterface.TAG_GAMMA,
-            ExifInterface.TAG_PIXEL_X_DIMENSION,
-            ExifInterface.TAG_PIXEL_Y_DIMENSION,
             ExifInterface.TAG_COMPONENTS_CONFIGURATION,
             ExifInterface.TAG_COMPRESSED_BITS_PER_PIXEL,
             ExifInterface.TAG_MAKER_NOTE,
